@@ -1,1 +1,679 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#16803c">
+  <title>Juego por la Educación Pública</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --green: #16803c; --green-dark: #0f6330; --green-light: #e8f5ec;
+      --ink: #202820; --muted: #657168;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-height: 100%; font-family: Arial, Helvetica, sans-serif; color: var(--ink); }
+    body { overflow: hidden; }
+
+    /* Bienvenida */
+    #welcome {
+      position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 22px; padding: 28px 20px;
+      overflow-y: auto; background: var(--green); color: #fff; text-align: center;
+    }
+    #welcome h1 { max-width: 1000px; margin: 0; font-size: clamp(2.5rem, 10vw, 7rem); line-height: 1.04; }
+    #welcome p { max-width: 850px; margin: 0; font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.4; }
+    #welcomeDolls { display: flex; align-items: end; justify-content: center; gap: clamp(10px, 4vw, 42px); }
+    #welcomeDolls .doll-wrap { width: clamp(90px, 20vw, 170px); height: clamp(125px, 28vw, 235px); }
+    #startButton {
+      border: 3px solid #fff; border-radius: 999px; padding: 18px 48px;
+      background: #fff; color: var(--green-dark); font-size: 2.24rem; font-weight: 700;
+      cursor: pointer; min-width: 210px;
+    }
+    button:focus-visible, input:focus-visible { outline: 4px solid #f2c94c; outline-offset: 3px; }
+
+    /* Mapa */
+    #game { display: none; position: fixed; inset: 0; }
+    #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .map-header {
+      position: absolute; z-index: 700; top: 14px; left: 50%; transform: translateX(-50%);
+      width: min(60vw, 680px); padding: 15px 18px; border-radius: 16px;
+      background: rgba(255,255,255,.97); box-shadow: 0 2px 14px #0002; text-align: center;
+    }
+    .map-header strong { display: block; font-size: 1.96rem; line-height: 1.15; }
+    #progress { margin-top: 8px; color: var(--muted); font-size: 1.76rem; line-height: 1.2; }
+    #gpsStatus { margin-top: 8px; color: var(--muted); font-size: 1.56rem; line-height: 1.25; }
+
+    /* Tres muñecos fijos en las esquinas */
+    .doll-card {
+      position: absolute; z-index: 750; width: 142px; padding: 7px 7px 8px;
+      border-radius: 15px; background: rgba(255,255,255,.97);
+      box-shadow: 0 2px 14px #0003; text-align: center; pointer-events: none;
+    }
+    #dollCardPurple { top: 12px; left: 12px; }
+    #dollCardOrange { top: 12px; right: 12px; }
+    #dollCardRed { bottom: 12px; left: 12px; }
+    .doll-card .doll-wrap { width: 124px; height: 166px; margin: 0 auto; }
+    .doll-caption { font-size: 1.44rem; line-height: 1.1; font-weight: 700; }
+    .doll-purple { --doll-color: #8b55c7; }
+    .doll-orange { --doll-color: #ed8b25; }
+    .doll-red { --doll-color: #d94343; }
+
+    /* Muñeco y prendas */
+    .doll-svg { width: 100%; height: 100%; overflow: visible; }
+    .clothing { display: none; }
+    .doll-svg.level-1 #shirt { display: inline; }
+    .doll-svg.level-2 #shirt, .doll-svg.level-2 #pants { display: inline; }
+    .doll-svg.level-3 #shirt, .doll-svg.level-3 #pants, .doll-svg.level-3 #socks { display: inline; }
+    .doll-svg.level-4 #shirt, .doll-svg.level-4 #pants, .doll-svg.level-4 #socks, .doll-svg.level-4 #hat { display: inline; }
+    .doll-svg.level-5 #shirt, .doll-svg.level-5 #pants, .doll-svg.level-5 #socks, .doll-svg.level-5 #hat, .doll-svg.level-5 #shoes { display: inline; }
+    .doll-svg.level-6 #shirt, .doll-svg.level-6 #pants, .doll-svg.level-6 #socks, .doll-svg.level-6 #hat, .doll-svg.level-6 #shoes, .doll-svg.level-6 #hoodie { display: inline; }
+    .doll-svg.level-7 #shirt, .doll-svg.level-7 #pants, .doll-svg.level-7 #socks, .doll-svg.level-7 #hat, .doll-svg.level-7 #shoes, .doll-svg.level-7 #hoodie, .doll-svg.level-7 #gloves { display: inline; }
+    .doll-svg.level-8 .clothing { display: inline; }
+
+    /* Marcadores por zonas */
+    .zone-marker {
+      width: 30px; height: 30px; border-radius: 50%; border: 4px solid currentColor;
+      box-shadow: 0 1px 6px #0006; background: currentColor;
+    }
+    .zone-marker.purple { color: #8b55c7; }
+    .zone-marker.orange { color: #ed8b25; }
+    .zone-marker.red { color: #d94343; }
+    .zone-marker.done { color: #22a447; border-color: #116b2d; background: #22a447; }
+    .player-dot {
+      width: 24px; height: 24px; border-radius: 50%; background: rgba(0, 105, 255, .5);
+      border: 2px solid rgba(0, 76, 190, .85); box-shadow: 0 0 0 5px rgba(0, 105, 255, .12);
+    }
+
+    /* Preguntas y pantallas */
+    .overlay {
+      position: fixed; inset: 0; z-index: 2000; display: none; align-items: center;
+      justify-content: center; padding: 22px; background: rgba(12, 25, 16, .72);
+    }
+    .dialog {
+      width: min(100%, 760px); max-height: 90vh; overflow-y: auto; background: #fff;
+      border-radius: 18px; padding: clamp(26px, 6vw, 48px); box-shadow: 0 10px 40px #0004;
+    }
+    .dialog h2 { margin: 0 0 18px; color: var(--green-dark); font-size: clamp(2.8rem, 8vw, 4rem); }
+    .dialog p { font-size: 1.8rem; line-height: 1.5; }
+    .dialog .question { font-size: 2.32rem; font-weight: 700; }
+    .dialog label { font-size: 1.8rem; font-weight: 700; }
+    .dialog input {
+      width: 100%; padding: 18px 18px; margin: 12px 0 18px; border: 2px solid #b9c4bb;
+      border-radius: 10px; font-size: 2.1rem;
+    }
+    .primary-button {
+      border: 0; border-radius: 999px; padding: 18px 30px; background: var(--green);
+      color: white; font-size: 2rem; font-weight: 700; cursor: pointer;
+    }
+    .primary-button:disabled { opacity: .55; cursor: wait; }
+    .feedback { min-height: 1.35em; margin: 10px 0 0; color: #9a2d22; font-size: 1.8rem !important; }
+    #successOverlay { z-index: 2500; background: #fff; color: var(--ink); overflow-y: auto; }
+    #successContent { width: min(100%, 900px); max-height: 100%; overflow-y: auto; padding: 34px 26px; text-align: left; }
+    #successTitle { margin: 0 0 24px; color: var(--green); text-align: center; font-size: clamp(4rem, 12vw, 6.4rem); }
+    #successText { font-size: clamp(1.96rem, 5vw, 2.2rem); line-height: 1.55; }
+    #successText h3 { color: var(--green-dark); font-size: 2.7rem; margin: 0 0 20px; }
+    #successText p { margin: 0 0 18px; }
+    #successText strong { font-weight: 700; }
+    #continueButton { display: block; margin: 28px auto 0; min-width: 190px; }
+
+    @media (max-width: 650px) {
+      .map-header {
+        top: auto; bottom: 12px; width: min(58vw, 380px); left: auto; right: 10px;
+        transform: none; padding: 10px 12px;
+      }
+      .map-header strong { font-size: 1.96rem; }
+      #progress { font-size: 1.76rem; }
+      #gpsStatus { font-size: 1.56rem; }
+      .doll-card { width: 100px; padding: 5px; }
+      #dollCardPurple { top: 8px; left: 8px; }
+      #dollCardOrange { top: 8px; right: 8px; }
+      #dollCardRed { bottom: 8px; left: 8px; }
+      .doll-card .doll-wrap { width: 86px; height: 116px; }
+      .doll-caption { font-size: 1.05rem; }
+      .leaflet-bottom.leaflet-right { bottom: 165px; }
+      .leaflet-bottom.leaflet-left { bottom: 140px; }
+      .dialog { max-height: 94vh; padding: 22px; }
+      .dialog .question { font-size: 2.32rem; }
+      .dialog p, .dialog label, .feedback { font-size: 1.8rem !important; }
+      .dialog input { font-size: 2.1rem; }
+      .primary-button { font-size: 2rem; }
+      #successContent { padding: 24px 18px; }
+      #successText { font-size: 1.96rem; }
+      #successText h3 { font-size: 2.7rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Plantilla común: el color del cuerpo identifica la zona -->
+  <template id="dollTemplate">
+    <svg class="doll-svg" viewBox="0 0 160 220" role="img" aria-label="Muñeco que se va vistiendo">
+      <!-- Cuerpo -->
+      <circle cx="80" cy="30" r="22" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+      <circle cx="72" cy="29" r="2" fill="#443a35"/>
+      <circle cx="88" cy="29" r="2" fill="#443a35"/>
+      <path d="M73 39 Q80 44 87 39" fill="none" stroke="#795d4b" stroke-width="1.5" stroke-linecap="round"/>
+      <rect x="72" y="50" width="16" height="12" rx="5" fill="var(--doll-color, #e8c5a5)"/>
+      <path d="M59 61 Q80 54 101 61 L108 121 Q80 130 52 121 Z" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+      <path d="M58 67 Q43 73 39 108 L34 143 Q33 151 40 152 Q47 153 49 144 L65 103" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+      <path d="M102 67 Q117 73 121 108 L126 143 Q127 151 120 152 Q113 153 111 144 L95 103" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+      <path d="M61 119 L77 119 L74 184 L65 205 Q59 210 55 205 L57 184 Z" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+      <path d="M83 119 L99 119 L103 184 L105 205 Q99 210 94 205 L86 184 Z" fill="var(--doll-color, #e8c5a5)" stroke="#795d4b" stroke-width="1.5"/>
+
+      <!-- 1. Camiseta -->
+      <g id="shirt" class="clothing">
+        <path d="M59 62 L47 69 L39 91 L53 98 L59 86 L58 121 Q80 128 102 121 L101 86 L107 98 L121 91 L113 69 L101 62 L92 69 L68 69 Z"
+          fill="#188b43" stroke="#075c2b" stroke-width="2"/>
+        <text x="80" y="91" text-anchor="middle" font-size="6.2" font-weight="bold" fill="white">Escuela pública</text>
+        <text x="80" y="99" text-anchor="middle" font-size="6.2" font-weight="bold" fill="white">de tod@s</text>
+        <text x="80" y="107" text-anchor="middle" font-size="6.2" font-weight="bold" fill="white">para tod@s</text>
+      </g>
+
+      <!-- 2. Pantalón vaquero -->
+      <g id="pants" class="clothing">
+        <path d="M58 117 Q80 123 102 117 L105 166 L88 166 L80 140 L72 166 L55 166 Z"
+          fill="#356da5" stroke="#214c78" stroke-width="2"/>
+        <path d="M80 124 L80 163 M62 127 L64 137 M98 127 L96 137" stroke="#a8c7e2" stroke-width="1.5" fill="none"/>
+      </g>
+
+      <!-- 3. Calcetines -->
+      <g id="socks" class="clothing">
+        <path d="M57 178 L74 178 L72 199 L57 199 Z M86 178 L103 178 L105 199 L88 199 Z"
+          fill="#f7f7f2" stroke="#777" stroke-width="1.5"/>
+        <path d="M57 184 L73 184 M88 184 L104 184" stroke="#188b43" stroke-width="3"/>
+      </g>
+
+      <!-- 4. Gorro verde -->
+      <g id="hat" class="clothing">
+        <path d="M57 27 Q58 -2 81 1 Q103 2 104 28 Q82 20 57 27 Z"
+          fill="#188b43" stroke="#075c2b" stroke-width="2"/>
+        <path d="M53 27 Q80 19 108 27 L106 34 Q80 29 54 35 Z" fill="#116d34" stroke="#075c2b" stroke-width="1.5"/>
+      </g>
+
+      <!-- 5. Zapatos -->
+      <g id="shoes" class="clothing">
+        <path d="M55 195 Q65 201 73 194 L78 207 Q76 215 51 213 Q45 210 55 195 Z"
+          fill="#30383d" stroke="#171d20" stroke-width="1.5"/>
+        <path d="M88 194 Q98 201 105 195 L116 207 Q118 215 92 213 Q85 210 88 194 Z"
+          fill="#30383d" stroke="#171d20" stroke-width="1.5"/>
+        <path d="M51 208 Q64 212 77 208 M91 208 Q105 212 117 208" stroke="#fff" stroke-width="2"/>
+      </g>
+
+      <!-- 6. Sudadera verde -->
+      <g id="hoodie" class="clothing">
+        <path d="M57 61 Q80 51 103 61 L116 72 L124 101 L108 107 L101 91 L104 130 Q80 138 56 130 L59 91 L52 107 L36 101 L44 72 Z"
+          fill="#16803c" stroke="#075c2b" stroke-width="2.5"/>
+        <path d="M68 61 Q80 77 92 61" fill="none" stroke="#d8eee0" stroke-width="3"/>
+        <path d="M73 69 L73 81 M87 69 L87 81" stroke="#d8eee0" stroke-width="1.5"/>
+        <text x="80" y="96" text-anchor="middle" font-size="6.2" font-weight="bold" fill="white">Escuela pública</text>
+        <text x="80" y="104" text-anchor="middle" font-size="6.2" font-weight="bold" fill="white">de tod@s para tod@s</text>
+        <path d="M66 112 L94 112" stroke="#d8eee0" stroke-width="1.5"/>
+      </g>
+
+      <!-- 7. Guantes -->
+      <g id="gloves" class="clothing">
+        <path d="M29 142 Q26 136 30 132 Q34 130 36 136 L37 126 Q41 122 44 128 L44 137 Q49 134 51 140 L48 153 Q43 160 34 154 Z"
+          fill="#188b43" stroke="#075c2b" stroke-width="1.5"/>
+        <path d="M109 140 Q107 134 112 132 Q116 131 118 137 L119 127 Q123 123 126 129 L126 138 Q132 135 134 142 L130 154 Q124 160 115 154 Z"
+          fill="#188b43" stroke="#075c2b" stroke-width="1.5"/>
+      </g>
+
+      <!-- 8. Bufanda -->
+      <g id="scarf" class="clothing">
+        <path d="M61 55 Q80 66 99 55 L97 68 Q80 79 63 68 Z" fill="#188b43" stroke="#075c2b" stroke-width="1.5"/>
+        <path d="M91 65 L105 68 L101 98 L89 96 Z" fill="#188b43" stroke="#075c2b" stroke-width="1.5"/>
+        <path d="M91 75 L103 77 M90 83 L102 85" stroke="#d8eee0" stroke-width="1.5"/>
+      </g>
+    </svg>
+  </template>
+
+  <section id="welcome">
+    <h1>JUEGO POR LA EDUCACIÓN PÚBLICA</h1>
+    <p>Recorre las tres zonas, resuelve las preguntas y viste a los tres muñecos.</p>
+    <div id="welcomeDolls">
+      <div class="doll-wrap doll-purple" id="welcomePurple"></div>
+      <div class="doll-wrap doll-orange" id="welcomeOrange"></div>
+      <div class="doll-wrap doll-red" id="welcomeRed"></div>
+    </div>
+    <button id="startButton">Comenzar</button>
+  </section>
+
+  <main id="game">
+    <div id="map" aria-label="Mapa interactivo de Rivas-Vaciamadrid"></div>
+    <div class="map-header">
+      <strong>JUEGO POR LA EDUCACIÓN PÚBLICA</strong>
+      <div id="progress">Ubicaciones completadas: 0 de 22</div>
+      <div id="gpsStatus">Selecciona un punto del mapa para comprobar tu ubicación.</div>
+    </div>
+    <aside class="doll-card" id="dollCardPurple">
+      <div class="doll-wrap doll-purple" id="mapDollPurple"></div>
+      <div class="doll-caption" id="captionPurple">Morado · 0/8</div>
+    </aside>
+    <aside class="doll-card" id="dollCardOrange">
+      <div class="doll-wrap doll-orange" id="mapDollOrange"></div>
+      <div class="doll-caption" id="captionOrange">Naranja · 0/8</div>
+    </aside>
+    <aside class="doll-card" id="dollCardRed">
+      <div class="doll-wrap doll-red" id="mapDollRed"></div>
+      <div class="doll-caption" id="captionRed">Rojo · 0/8</div>
+    </aside>
+  </main>
+
+  <section id="questionOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="questionTitle">
+    <div class="dialog">
+      <h2 id="questionTitle">Pista</h2>
+      <p id="questionText" class="question"></p>
+      <p id="locationStatus" class="feedback" style="color:#53645a"></p>
+      <form id="answerForm">
+        <div id="answerEntry">
+          <label for="answerInput">Escribe tu respuesta:</label>
+          <input id="answerInput" type="text" autocomplete="off" required>
+          <button class="primary-button" id="answerButton" type="submit">Comprobar respuesta</button>
+        </div>
+      </form>
+      <button class="primary-button" id="labyrinthButton" type="button" style="display:none">Comprobar que he llegado al centro</button>
+      <p id="answerFeedback" class="feedback" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section id="successOverlay" class="overlay" role="dialog" aria-modal="true">
+    <div id="successContent">
+      <h1 id="successTitle">Correcto</h1>
+      <div id="successText"></div>
+      <button class="primary-button" id="continueButton">Continuar</button>
+    </div>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const RADIO_METROS = 15;
+    const PRECISION_MAXIMA = 15;
+    const STORAGE_KEY = "juegoEducacionPublicaRivas_v3";
+
+    const lugares = [
+      // ZONA MORADA
+      { id:"picasso", zona:"purple", nombre:"Plaza Pablo Picasso", lat:40.364390, lng:-3.549775,
+        pregunta:"¿Apellido del pintor da nombre a esta plaza y que pintó el Guernica?", respuestas:["picasso"] },
+      { id:"reloj", zona:"purple", nombre:"Reloj de Sol Villacís", lat:40.361005, lng:-3.550990,
+        pregunta:"¿Cuál es el primer número romano que aparece en este reloj de Sol (el más pequeño)?", respuestas:["vi"] },
+      { id:"covibar", zona:"purple", nombre:"Centro Cívico Covibar", lat:40.365180, lng:-3.549676,
+        pregunta:"¿Quién es el personaje del libro más famoso en castellano representado sobre un caballo en esta imagen?", respuestas:["don quijote","quijote","don quijote de la mancha"] },
+      { id:"juventud", zona:"purple", nombre:"Casa de la Juventud", lat:40.363516, lng:-3.550564,
+        pregunta:"¿A qué juego se juega en esta zona? Si no lo conoces, ¡pregunta cómo se juega y prueba una partida!", respuestas:["petanca"] },
+      { id:"perros", zona:"purple", nombre:"Parque de perros", lat:40.361802, lng:-3.551757,
+        pregunta:"Tengo cuatro patas, una cola para mover cuando estoy contento y contigo quiero jugar. ¿Quién soy?", respuestas:["perro"] },
+      { id:"futbol", zona:"purple", nombre:"Pista de fútbol", lat:40.362849, lng:-3.550582,
+        pregunta:"Corre lo más rápido que puedas y contesta: ¿cuántos segundos tardas en ir de un lado a otro de la pista de fútbol?", rango:[9,30] },
+      { id:"monolito", zona:"purple", nombre:"Monolito", lat:40.361133, lng:-3.552259,
+        pregunta:"¿Qué figura geométrica forman los escalones que dan al monolito (la gran piedra en vertical)?", respuestas:["circulo"] },
+      { id:"escudo", zona:"purple", nombre:"Antiguo escudo de Rivas-Vaciamadrid", lat:40.360124, lng:-3.551897,
+        pregunta:"Busca un escudo por la zona. Es el escudo antiguo de Rivas-Vaciamadrid. ¿Qué edificación aparece en él?", respuestas:["castillo"] },
+
+      // ZONA NARANJA
+      { id:"fotos-parque", zona:"orange", nombre:"Parque lineal · Fotografías", lat:40.366223, lng:-3.546749,
+        pregunta:"¿Cuál es el animal que más se repite en las fotografías expuestas?", respuestas:["perro"] },
+      { id:"avispa", zona:"orange", nombre:"Parque lineal · Imagen de insectos", lat:40.366703, lng:-3.547439,
+        pregunta:"¿Cuál es el animal más pequeño de los que aparecen en la imagen?", respuestas:["avispa","abeja"] },
+      { id:"bancos", zona:"orange", nombre:"Parque lineal · Bancos bajo techo", lat:40.361503, lng:-3.543919,
+        pregunta:"¿Cuántos bancos existen bajo la parte techada? ¡Acércate a cada uno de ellos para contarlos!", respuestas:["10","diez"] },
+      { id:"laberinto", zona:"orange", nombre:"Parque lineal · Centro del laberinto", lat:40.360197, lng:-3.544260,
+        pregunta:"Debes llegar al centro del laberinto con el teléfono móvil para que lo reconozca.", especial:"laberinto", radioPregunta:15, radioCompletar:5 },
+      { id:"caracol", zona:"orange", nombre:"Parque lineal · Mirador", lat:40.362029, lng:-3.544085,
+        pregunta:"¿Cómo se llama al tipo de subida de escaleras de este mirador? Tiene el nombre de un baboso animal.", respuestas:["escaleras de caracol","caracol"] },
+      { id:"toboganes", zona:"orange", nombre:"Parque lineal · Toboganes", lat:40.363116, lng:-3.543748,
+        pregunta:"¿Cuántos toboganes eres capaz de contar cercanos a esta zona? Si no están mojados, ¡tírate por cada uno de ellos en menos de 2 minutos!", respuestas:["3","tres"] },
+      { id:"puente", zona:"orange", nombre:"Parque lineal · Puente colgante", lat:40.363116, lng:-3.543748, displayLat:40.363196, displayLng:-3.543688,
+        pregunta:"¿Cuántos pasos necesitas para cruzar el puente colgante desde un lado a otro? ¡Cuéntalos!", rango:[6,15] },
+
+      // ZONA ROJA
+      { id:"calle-sol", zona:"red", nombre:"Calle del Sol", lat:40.358069, lng:-3.546793,
+        pregunta:"Uno de los dioses más importantes del antiguo Egipto fue Ra, quien era el dios del … (Pista: Una calle cercana contiene la palabra que buscas)", respuestas:["sol"] },
+      { id:"tenis", zona:"red", nombre:"Polideportivo Cerro del Telégrafo · Tenis", lat:40.357722, lng:-3.545507,
+        pregunta:"¿Cuántas pistas de tenis a cielo abierto existen en este espacio?", respuestas:["5","cinco"] },
+      { id:"atletismo", zona:"red", nombre:"Polideportivo Cerro del Telégrafo · Atletismo", lat:40.357948, lng:-3.543265,
+        pregunta:"¿Cuántas calles existen en esta pista de atletismo? ¡Cuéntalas!", respuestas:["8","ocho"] },
+      { id:"cartel-parking", zona:"red", nombre:"Polideportivo Cerro del Telégrafo · Parking", lat:40.356761, lng:-3.546138,
+        pregunta:"En el parking, busca un cartel con personas saltándose una valla. ¿Cuántas personas hay?", respuestas:["4","cuatro"] },
+      { id:"muro-colores", zona:"red", nombre:"Polideportivo Cerro del Telégrafo · Muro de colores", lat:40.356285, lng:-3.546489,
+        pregunta:"Los colores que se ven en el muro son: rosa, morado, azul oscuro, azul claro, amarillo, naranja y …", respuestas:["verde"] },
+      { id:"patinaje", zona:"red", nombre:"Polideportivo Cerro del Telégrafo · Patinaje", lat:40.357169, lng:-3.545284,
+        pregunta:"¿Cuántas pistas de patinaje existen en el interior de este edificio?", respuestas:["2","dos"] },
+      { id:"punto-limpio", zona:"red", nombre:"Punto limpio", lat:40.355701, lng:-3.545232,
+        pregunta:"Mira el cartel informativo donde aparece el horario del punto limpio. ¿Dónde se tiraría un juguete de plástico?", respuestas:["plasticos no envase","plastico no envase"] },
+
+    ];
+
+    const mensajes = [
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>Cuantos menos alumnos hay en un aula, más oportunidades tiene cada uno de aprender?</strong></p>
+       <p>Con grupos más pequeños, el profesorado puede atender mejor las dudas, detectar dificultades, acompañar a cada alumno y prevenir conflictos. En definitiva, nadie se queda atrás por falta de atención.</p>
+       <p><strong>Reducir las ratios no es un privilegio del profesorado: es mejorar la educación de nuestros hijos e hijas.</strong></p>
+       <p>Porque una clase con menos alumnos es una clase con más oportunidades.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>Hay alumnos que necesitan un apoyo extra para poder aprender en igualdad de condiciones?</strong></p>
+       <p>Algunos niños necesitan ayuda especializada para superar dificultades de aprendizaje, comunicarse mejor o seguir el ritmo de la clase. Para eso están los profesores de apoyo, que trabajan con ellos y junto al resto de docentes.</p>
+       <p>Pero cuando faltan estos profesionales, muchos alumnos no reciben la atención que necesitan y sus dificultades pueden hacerse mayores.</p>
+       <p><strong>Reclamar más profesores de apoyo no es pedir un privilegio: es defender que ningún niño se quede atrás por no recibir la ayuda que necesita.</strong></p>
+       <p>Porque todos nuestros hijos merecen las mismas oportunidades.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>Cada vez más adolescentes necesitan ayuda para afrontar problemas emocionales y de salud mental?</strong></p>
+       <p>Ansiedad, tristeza, problemas de autoestima, dificultades familiares... En los institutos, los orientadores son fundamentales para escuchar, detectar problemas a tiempo y ayudar a quienes lo necesitan.</p>
+       <p>Pero cuando hay pocos orientadores para cientos de alumnos, no llegan a todos. Se ven obligados a priorizar los casos más graves, dejando a muchos otros sin la atención que necesitan hasta que su situación empeora.</p>
+       <p><strong>Necesitamos más orientadores para poder prevenir y acompañar, no solo intervenir cuando el problema ya es grave.</strong></p>
+       <p>Porque la salud mental de nuestros hijos también merece atención.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>Nuestros hijos pasan muchas horas al día en aulas que no siempre tienen unas condiciones adecuadas de temperatura?</strong></p>
+       <p>En verano, las aulas pueden alcanzar temperaturas muy elevadas y, en invierno, no siempre cuentan con una calefacción adecuada. Esto afecta al bienestar, la concentración y las condiciones en las que los niños pueden aprender.</p>
+       <p>Los centros educativos necesitan una climatización adecuada, sostenible y adaptada a las condiciones climáticas actuales. También necesitan instalaciones dignas, seguras y bien mantenidas.</p>
+       <p><strong>No podemos pedir a nuestros hijos que aprendan en condiciones que no les permitiríamos en ningún otro espacio.</strong></p>
+       <p>Una educación pública de calidad también necesita espacios dignos para aprender.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>No todos los colegios e institutos tienen los mismos recursos para enseñar?</strong></p>
+       <p>Hay centros con laboratorios sin equipar, ordenadores obsoletos, bibliotecas sin renovar, materiales insuficientes o edificios que necesitan reformas desde hace años.</p>
+       <p>Cuando faltan recursos, las posibilidades de aprender haciendo, experimentar y desarrollar nuevas habilidades también se reducen. Y muchas veces son las propias familias o los docentes quienes acaban poniendo de su bolsillo lo que la Administración no proporciona.</p>
+       <p><strong>La educación pública no puede depender de cuánto dinero tenga cada centro ni de lo que puedan aportar sus familias.</strong></p>
+       <p>Todos los alumnos merecen las mismas oportunidades, independientemente del instituto en el que estudien.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>No todos los colegios e institutos tienen los mismos recursos para enseñar?</strong></p>
+       <p>Hay centros con laboratorios sin equipar, ordenadores obsoletos, bibliotecas sin renovar, materiales insuficientes o edificios que necesitan reformas desde hace años.</p>
+       <p>Cuando faltan recursos, las posibilidades de aprender haciendo, experimentar y desarrollar nuevas habilidades también se reducen. Y muchas veces son las propias familias o los docentes quienes acaban poniendo de su bolsillo lo que la Administración no proporciona.</p>
+       <p><strong>La educación pública no puede depender de cuánto dinero tenga cada centro ni de lo que puedan aportar sus familias.</strong></p>
+       <p>Todos los alumnos merecen las mismas oportunidades, independientemente del instituto en el que estudien.</p>
+       <p><strong>¡Esta reivindicación también es vuestra!</strong></p>`,
+
+      `<h3>¿Sabías que...?</h3>
+       <p><strong>Cuando un profesor se pone enfermo o causa baja, sus alumnos no deberían quedarse semanas sin clase.</strong></p>
+       <p>En muchos centros de la Comunidad de Madrid, las sustituciones tardan semanas en llegar. Durante ese tiempo, los alumnos pierden horas de clase, se interrumpe el ritmo de aprendizaje y se acumulan contenidos que después resulta difícil recuperar.</p>
+       <p>Además, el resto del profesorado tiene que asumir muchas veces la atención de esos grupos, aumentando la carga de trabajo y dificultando también su labor docente.</p>
+       <p><strong>El derecho a la educación no debería depender de que haya o no un profesor disponible para sustituir una baja.</strong></p>
+       <p>Cuando falta un docente, la Administración debe garantizar que sus alumnos sigan teniendo clase.</p>`,
+
+      `<h3>¿Y si todo esto también fuera por tus hijos?</h3>
+       <p><strong>Menos alumnos por aula. Más profesores de apoyo. Más orientadores para cuidar la salud mental. Más recursos y mejores instalaciones. Sustituciones rápidas para que ningún alumno pierda semanas de clase.</strong></p>
+       <p>No son privilegios para los docentes. Son condiciones necesarias para que nuestros hijos reciban la educación que merecen.</p>
+       <p><strong>El profesorado no está luchando solo por sus condiciones laborales. Está luchando por una educación pública de calidad, inclusiva y con recursos suficientes para todos.</strong></p>
+       <p>Porque la educación de nuestros hijos es una responsabilidad compartida.</p>
+       <p><strong>Esta lucha también es vuestra. ¿Os sumáis?</strong></p>`
+    ];
+
+    const nombresZonas = { purple:"Morado", orange:"Naranja", red:"Rojo" };
+    const prendas = ["camiseta verde","pantalón vaquero","calcetines","gorro verde","zapatos","sudadera verde","guantes","bufanda verde"];
+    const MAX_PRENDAS = prendas.length;
+
+    function cargarEstado() {
+      try {
+        const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        return Array.isArray(data.completados) ? data.completados : [];
+      } catch (_) { return []; }
+    }
+    let completados = new Set(cargarEstado());
+    let mapa = null, marcadores = {}, lugarActivo = null, comprobando = false;
+    let circuloJugador = null, seguimientoGPS = null, ultimaPosicion = null;
+
+    function guardarEstado() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ completados:[...completados] }));
+    }
+    function normalizar(texto) {
+      return texto.trim().toLocaleLowerCase("es").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").replace(/[¿?¡!.,;:…]/g, "").replace(/\s+/g, " ");
+    }
+    function distanciaMetros(lat1, lon1, lat2, lon2) {
+      const R=6371000, rad=v=>v*Math.PI/180;
+      const dLat=rad(lat2-lat1), dLon=rad(lon2-lon1);
+      const a=Math.sin(dLat/2)**2 + Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+      return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+    function crearMuneco(elemento, nivel) {
+      elemento.innerHTML = document.getElementById("dollTemplate").innerHTML;
+      const svg = elemento.querySelector("svg");
+      svg.classList.add(`level-${Math.min(MAX_PRENDAS,nivel)}`);
+    }
+    function progresoZona(zona) {
+      const total = lugares.filter(l => l.zona === zona).length;
+      const hechas = lugares.filter(l => l.zona === zona && completados.has(l.id)).length;
+      // En las zonas de siete preguntas, la última respuesta completa las ocho prendas.
+      const nivel = hechas >= total && total === 7 ? MAX_PRENDAS : Math.min(MAX_PRENDAS, hechas);
+      return {hechas,total,nivel};
+    }
+    function actualizarMunecos() {
+      const zonas = [
+        {key:"Purple", id:"purple", label:"Morado"},
+        {key:"Orange", id:"orange", label:"Naranja"},
+        {key:"Red", id:"red", label:"Rojo"}
+      ];
+      zonas.forEach(z => {
+        const progreso = progresoZona(z.id);
+        crearMuneco(document.getElementById("mapDoll"+z.key), progreso.nivel);
+        crearMuneco(document.getElementById("welcome"+z.key), progreso.nivel);
+        document.getElementById("caption"+z.key).textContent =
+          `${z.label} · ${progreso.nivel}/8 prendas`;
+      });
+    }
+    function actualizarProgreso() {
+      document.getElementById("progress").textContent =
+        `Ubicaciones completadas: ${completados.size} de ${lugares.length}`;
+      actualizarMunecos();
+    }
+    function iconoMarcador(lugar, hecho) {
+      const color = hecho ? "done" : lugar.zona;
+      return L.divIcon({
+        className:"",
+        html:`<div class="zone-marker ${color}" aria-label="${hecho ? "Completado" : nombresZonas[lugar.zona]}"></div>`,
+        iconSize:[30,30], iconAnchor:[15,15]
+      });
+    }
+    function iniciarMapa() {
+      if (mapa) { mapa.invalidateSize(); return; }
+      mapa = L.map("map", {zoomControl:true});
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom:19, attribution:"&copy; OpenStreetMap"
+      }).addTo(mapa);
+
+      lugares.forEach(lugar => {
+        const markerLat = lugar.displayLat ?? lugar.lat;
+        const markerLng = lugar.displayLng ?? lugar.lng;
+        const marker = L.marker([markerLat,markerLng], {
+          icon:iconoMarcador(lugar,completados.has(lugar.id))
+        }).addTo(mapa);
+        marker.bindTooltip(lugar.nombre);
+        marker.on("click",()=>iniciarComprobacion(lugar));
+        marcadores[lugar.id] = marker;
+      });
+      const bounds = L.latLngBounds(lugares.map(l=>[l.lat,l.lng]));
+      mapa.fitBounds(bounds,{padding:[65,65]});
+      actualizarProgreso();
+      iniciarSeguimientoGPS();
+    }
+    function actualizarEstadoGPS(texto) {
+      document.getElementById("gpsStatus").textContent = texto;
+    }
+    function posicionValida(pos) {
+      if (!pos) return {ok:false,texto:"No hemos podido comprobar tu ubicación."};
+      if (pos.accuracy > PRECISION_MAXIMA) {
+        return {ok:false,texto:`La precisión actual del GPS es de unos ${Math.round(pos.accuracy)} m. Necesitamos una precisión de ${PRECISION_MAXIMA} m o mejor. Prueba al aire libre y vuelve a intentarlo.`};
+      }
+      return {ok:true,texto:`Ubicación comprobada (precisión aproximada: ${Math.round(pos.accuracy)} m).`};
+    }
+    function evaluarPosicion(lugar,pos,radio) {
+      const precision = posicionValida(pos);
+      if (!precision.ok) return precision;
+      const distancia = distanciaMetros(pos.lat,pos.lng,lugar.lat,lugar.lng);
+      if (distancia > radio) {
+        return {ok:false,texto:`Estás aproximadamente a ${Math.round(distancia)} m del punto. Acércate hasta estar a ${radio} m o menos.`};
+      }
+      return {ok:true,texto:`Estás a ${distancia.toFixed(1)} m del punto. ${precision.texto}`};
+    }
+    function leerPosicion(callback) {
+      if (!navigator.geolocation) {
+        actualizarEstadoGPS("Tu navegador no permite usar la geolocalización.");
+        callback(null); return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos=>callback({lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy}),
+        err=>{
+          let msg="No se pudo obtener tu ubicación.";
+          if(err.code===1) msg="Has bloqueado el acceso a la ubicación. Actívalo en el navegador.";
+          if(err.code===2) msg="No se ha podido determinar tu ubicación. Comprueba el GPS.";
+          if(err.code===3) msg="El GPS ha tardado demasiado. Vuelve a intentarlo.";
+          actualizarEstadoGPS(msg); callback(null);
+        },
+        {enableHighAccuracy:true,maximumAge:0,timeout:20000}
+      );
+    }
+    function iniciarSeguimientoGPS() {
+      if (!navigator.geolocation || seguimientoGPS !== null) return;
+      seguimientoGPS = navigator.geolocation.watchPosition(pos=>{
+        const p={lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy};
+        ultimaPosicion=p;
+        if (!mapa) return;
+        if (!circuloJugador) {
+          circuloJugador=L.circleMarker([p.lat,p.lng],{
+            radius:13, color:"#0754b8", weight:2,
+            fillColor:"#0878ff", fillOpacity:0.5
+          }).addTo(mapa);
+        } else circuloJugador.setLatLng([p.lat,p.lng]);
+      },err=>{
+        if(err.code===1) actualizarEstadoGPS("Activa el permiso de ubicación para ver tu posición en el mapa.");
+      },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+    }
+
+    function iniciarComprobacion(lugar) {
+      if(completados.has(lugar.id)) {
+        actualizarEstadoGPS("Este punto ya está completado. ¡Busca otro!");
+        return;
+      }
+      if(comprobando) return;
+      comprobando=true; lugarActivo=lugar;
+      actualizarEstadoGPS(`Comprobando si estás cerca de ${lugar.nombre}…`);
+      leerPosicion(pos=>{
+        comprobando=false;
+        if(!pos) return;
+        ultimaPosicion=pos;
+        const radio=lugar.radioPregunta ?? RADIO_METROS;
+        const resultado=evaluarPosicion(lugar,pos,radio);
+        actualizarEstadoGPS(resultado.texto);
+        if(resultado.ok) abrirPregunta(lugar,resultado.texto);
+      });
+    }
+    function abrirPregunta(lugar,estado) {
+      lugarActivo=lugar;
+      document.getElementById("questionTitle").textContent=lugar.nombre;
+      document.getElementById("questionText").textContent=lugar.pregunta;
+      document.getElementById("locationStatus").textContent=estado;
+      document.getElementById("answerInput").value="";
+      document.getElementById("answerFeedback").textContent="";
+      const esLaberinto=lugar.especial==="laberinto";
+      document.getElementById("answerEntry").style.display=esLaberinto?"none":"block";
+      document.getElementById("labyrinthButton").style.display=esLaberinto?"inline-block":"none";
+      document.getElementById("questionOverlay").style.display="flex";
+      if(!esLaberinto) setTimeout(()=>document.getElementById("answerInput").focus(),100);
+    }
+    function completarLugar(lugar) {
+      completados.add(lugar.id);
+      guardarEstado();
+      marcadores[lugar.id].setIcon(iconoMarcador(lugar,true));
+      actualizarProgreso();
+      document.getElementById("questionOverlay").style.display="none";
+      const progreso = progresoZona(lugar.zona);
+      mostrarMensaje(lugar.zona, progreso.hechas, progreso.total);
+    }
+    document.getElementById("answerForm").addEventListener("submit",event=>{
+      event.preventDefault();
+      if(!lugarActivo || comprobando || lugarActivo.especial==="laberinto") return;
+      const boton=document.getElementById("answerButton");
+      boton.disabled=true;
+      document.getElementById("answerFeedback").textContent="Volviendo a comprobar tu ubicación…";
+      comprobando=true;
+      const lugar=lugarActivo;
+      leerPosicion(pos=>{
+        comprobando=false; boton.disabled=false;
+        if(!pos) {
+          document.getElementById("answerFeedback").textContent="No hemos podido verificar que sigas en el lugar. Vuelve a intentarlo.";
+          return;
+        }
+        ultimaPosicion=pos;
+        const resultado=evaluarPosicion(lugar,pos,RADIO_METROS);
+        if(!resultado.ok) {
+          document.getElementById("answerFeedback").textContent=resultado.texto; return;
+        }
+        const texto=document.getElementById("answerInput").value;
+        let correcta=false;
+        if(lugar.rango) {
+          const n=Number(normalizar(texto).replace(",","."));
+          correcta=Number.isFinite(n) && n>=lugar.rango[0] && n<=lugar.rango[1];
+        } else {
+          correcta=lugar.respuestas.map(normalizar).includes(normalizar(texto));
+        }
+        if(!correcta) {
+          document.getElementById("answerFeedback").textContent="La respuesta no es correcta. ¡Vuelve a mirar a tu alrededor e inténtalo!";
+          return;
+        }
+        completarLugar(lugar);
+      });
+    });
+    document.getElementById("labyrinthButton").addEventListener("click",()=>{
+      if(!lugarActivo || comprobando) return;
+      const boton=document.getElementById("labyrinthButton");
+      boton.disabled=true;
+      document.getElementById("answerFeedback").textContent="Comprobando si has llegado al centro…";
+      comprobando=true;
+      const lugar=lugarActivo;
+      leerPosicion(pos=>{
+        comprobando=false; boton.disabled=false;
+        if(!pos) {
+          document.getElementById("answerFeedback").textContent="No hemos podido verificar tu ubicación. Vuelve a intentarlo.";
+          return;
+        }
+        ultimaPosicion=pos;
+        const resultado=evaluarPosicion(lugar,pos,lugar.radioCompletar);
+        document.getElementById("locationStatus").textContent=resultado.texto;
+        if(!resultado.ok) {
+          document.getElementById("answerFeedback").textContent=resultado.texto;
+          return;
+        }
+        completarLugar(lugar);
+      });
+    });
+
+    function mostrarPantalla(tituloTexto, contenido) {
+      document.getElementById("successTitle").textContent=tituloTexto;
+      document.getElementById("successText").innerHTML=contenido;
+      document.getElementById("successOverlay").style.display="flex";
+      document.getElementById("successOverlay").scrollTop=0;
+      document.getElementById("successContent").scrollTop=0;
+    }
+    function mostrarMensaje(zona, aciertosZona, totalZona) {
+      // Las zonas de ocho puntos muestran los mensajes 1-8.
+      // Las zonas de siete puntos muestran 1-6 y después directamente el mensaje final (8).
+      const numeroMensaje = (totalZona === 7 && aciertosZona === 7) ? 8 : aciertosZona;
+      const esFinal = numeroMensaje === 8;
+      mostrarPantalla(esFinal ? "ENHORABUENA" : "Correcto", mensajes[numeroMensaje-1]);
+    }
+    document.getElementById("continueButton").addEventListener("click",()=>{
+      document.getElementById("successOverlay").style.display="none";
+      lugarActivo=null;
+      actualizarEstadoGPS("Selecciona otro punto del mapa para continuar.");
+      if(mapa) setTimeout(()=>mapa.invalidateSize(),100);
+    });
+    document.getElementById("startButton").addEventListener("click",()=>{
+      document.getElementById("welcome").style.display="none";
+      document.getElementById("game").style.display="block";
+      iniciarMapa();
+      setTimeout(()=>mapa.invalidateSize(),100);
+    });
+
+    actualizarMunecos();
+  </script>
+</body>
+</html>
 
