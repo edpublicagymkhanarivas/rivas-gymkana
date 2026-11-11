@@ -79,6 +79,7 @@
     .zone-marker.purple { color: #8b55c7; }
     .zone-marker.orange { color: #ed8b25; }
     .zone-marker.red { color: #d94343; }
+    .zone-marker.test { color: #929292; }
     .zone-marker.done { color: #22a447; border-color: #116b2d; background: #22a447; }
     .player-dot {
       width: 24px; height: 24px; border-radius: 50%; background: rgba(0, 105, 255, .5);
@@ -242,7 +243,7 @@
     <div id="map" aria-label="Mapa interactivo de Rivas-Vaciamadrid"></div>
     <div class="map-header">
       <strong>JUEGO POR LA EDUCACIÓN PÚBLICA</strong>
-      <div id="progress">Ubicaciones completadas: 0 de 22</div>
+      <div id="progress">Ubicaciones completadas: 0 de 24</div>
       <div id="gpsStatus">Selecciona un punto del mapa para comprobar tu ubicación.</div>
     </div>
     <aside class="doll-card" id="dollCardPurple">
@@ -322,7 +323,7 @@
         pregunta:"¿Cómo se llama al tipo de subida de escaleras de este mirador? Tiene el nombre de un baboso animal.", respuestas:["escaleras de caracol","caracol"] },
       { id:"toboganes", zona:"orange", nombre:"Parque lineal · Toboganes", lat:40.363116, lng:-3.543748,
         pregunta:"¿Cuántos toboganes eres capaz de contar cercanos a esta zona? Si no están mojados, ¡tírate por cada uno de ellos en menos de 2 minutos!", respuestas:["3","tres"] },
-      { id:"puente", zona:"orange", nombre:"Parque lineal · Puente colgante", lat:40.363116, lng:-3.543748, displayLat:40.363196, displayLng:-3.543688,
+      { id:"puente", zona:"orange", nombre:"Parque lineal · Puente colgante", lat:40.364538, lng:-3.544909,
         pregunta:"¿Cuántos pasos necesitas para cruzar el puente colgante desde un lado a otro? ¡Cuéntalos!", rango:[6,15] },
 
       // ZONA ROJA
@@ -406,7 +407,7 @@
        <p><strong>Esta lucha también es vuestra. ¿Os sumáis?</strong></p>`
     ];
 
-    const nombresZonas = { purple:"Morado", orange:"Naranja", red:"Rojo" };
+    const nombresZonas = { purple:"Morado", orange:"Naranja", red:"Rojo", test:"Prueba" };
     const prendas = ["camiseta verde","pantalón vaquero","calcetines","gorro verde","zapatos","sudadera verde","guantes","bufanda verde"];
     const MAX_PRENDAS = prendas.length;
 
@@ -584,8 +585,12 @@
       marcadores[lugar.id].setIcon(iconoMarcador(lugar,true));
       actualizarProgreso();
       document.getElementById("questionOverlay").style.display="none";
-      const progreso = progresoZona(lugar.zona);
-      mostrarMensaje(lugar.zona, progreso.hechas, progreso.total);
+      if (lugar.zona === "test") {
+        mostrarMensajePrueba();
+      } else {
+        const progreso = progresoZona(lugar.zona);
+        mostrarMensaje(lugar.zona, progreso.hechas, progreso.total);
+      }
     }
     document.getElementById("answerForm").addEventListener("submit",event=>{
       event.preventDefault();
@@ -658,6 +663,10 @@
       const numeroMensaje = (totalZona === 7 && aciertosZona === 7) ? 8 : aciertosZona;
       const esFinal = numeroMensaje === 8;
       mostrarPantalla(esFinal ? "ENHORABUENA" : "Correcto", mensajes[numeroMensaje-1]);
+    }
+    function mostrarMensajePrueba() {
+      mostrarPantalla("Punto de prueba completado",
+        "<p><strong>¡La respuesta es correcta!</strong></p><p>Esta ubicación pertenece a la zona de prueba y no modifica el progreso de los tres muñecos ni la secuencia de mensajes reivindicativos.</p>");
     }
     document.getElementById("continueButton").addEventListener("click",()=>{
       document.getElementById("successOverlay").style.display="none";
